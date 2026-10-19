@@ -73,6 +73,21 @@ struct PublicAPITests {
         #expect(stub.requests.map(\.route) == [.manifest, .page(0)])
     }
 
+    @Test("ページの名前を頼む（設定・見立て・manifest の値は公開の面だけで書ける）")
+    func pageNamesThroughThePublicSurface() async throws {
+        let stub = StackNestStubServer(pageCount: 2)
+        stub.setPageNames(["ch1/001.jpg", "ch1/002.jpg"])
+        var configuration = stub.configuration()
+        configuration.requestsPageNames = true
+        let session = StackNestBookSession(reference: try stub.reference(), configuration: configuration)
+        let manifest = try await session.manifest()
+        #expect(manifest.pageNames == ["ch1/001.jpg", "ch1/002.jpg"])
+        #expect(StackNestBookManifest.maxPageNameBytes == 1024)
+        let made = StackNestBookManifest(pageCount: 1, direction: nil, format: nil, etag: nil, pageNames: ["x.jpg"])
+        #expect(made.pageNames == ["x.jpg"])
+        session.close()
+    }
+
     @Test("ビューアの試験に置く自己点検（Info.plist の宣言）")
     func selfCheckOfTheDeclaration() {
         let info: [String: Any] = [StackNestViewerSupport.infoPlistKey: [StackNestViewerSupport.versionsKey: [1]]]

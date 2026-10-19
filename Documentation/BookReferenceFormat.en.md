@@ -105,6 +105,15 @@ Send `Authorization: Bearer <token>` and the [identification header](#identifica
 - **404** means the book is gone (removed from the library, or the server closed the library). For `pages/{n}`, a page number past the end is also **404**. A **404** on `cover` can also mean the book has no cover image.
 - `pages/{n}` returns **500** when a page can't be rendered, and `progress` returns **400** for a negative page.
 
+### Page names (`?pageNames=1`)
+
+Ask with `GET {book}/manifest?pageNames=1` and `manifest` carries `pageNames` (an array of strings): `pageNames[n]` is the name of the page `pages/{n}` returns.
+
+- For an archive book it is the path inside the archive (separated by `/`, as in `folder/001.jpg`); for a folder book, the file name; for a single-image book, that file's name. Books whose pages have no names, such as PDFs and image-only EPUBs, don't get the key. The order is that of the `pages/{n}` numbers (the order StackNest put the pages in).
+- A `manifest` without the query never carries it (the list grows with the page count). Older StackNest versions that don't know names ignore the query and answer a `manifest` without them (**that is why names are asked for with a query instead of a new path**: an older StackNest refuses an unknown path with **403**, which a viewer would read as a token that no longer works). The relay for remote books passes `pageNames=1` on to the remote server (an older relay leaves the names out).
+- The names come from inside the book and aren't trusted. Use them for display and to tell pages apart, and **never as file system paths** (they can contain `..` or start with `/`). Readers treat a list as absent when its count differs from the page count, or when a name is empty, repeated (canonically equivalent names count as the same, so NFC and NFD forms repeat), contains a character that breaks the display (a control character, U+2028, U+2029, or the bidirectional formatting characters U+202A–U+202E and U+2066–U+2069) or is longer than 1,024 bytes (UTF-8) (StackNestViewerKit gives `nil`).
+- The names map to numbers as of that `manifest`. When the book's contents change (`etag` changes) the numbers can shift, so after reading `manifest` again (after a 404 from `pages/{n}`, for example) use the names that came with it.
+
 ### Relayed pages
 
 For a remote book (a `book` under `/api/v1/relay/`), `pages/{n}` without `maxw` (or with `maxw=1600`) returns the same image StackNest's built-in viewer gets. StackNest keeps relayed pages in its local cache, shares them with the built-in viewer, and after the hand-off prefetches the pages around the one being read (or every page, depending on StackNest's settings) in the background:
@@ -174,3 +183,4 @@ Changes to this document that don't change the format version.
 |---|---|
 | 2026-10-10 | Moved to the StackNestViewerKit repository. Added `kit=` to the identification header, relayed pages, the characters of `token`, the accepted forms of `expiresAt` and StackNestViewerKit's loopback default |
 | 2026-10-18 | Added that StackNestViewerKit checks the shape of the `book` path by default (`allowsAnyBookPath`), and the security reason for it |
+| 2026-10-19 | Added `pageNames` (the page names) to `manifest?pageNames=1` |

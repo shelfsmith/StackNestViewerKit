@@ -38,6 +38,28 @@ func thumbnail(_ session: StackNestBookSession, page: Int) async throws -> Stack
 }
 ```
 
+## ページの名前 / Page Names
+
+``StackNestBookSession/Configuration-swift.struct/requestsPageNames`` を立てると、manifest の要求に `?pageNames=1` を
+付け、``StackNestBookManifest/pageNames`` に StackNest のページ番号の順の名前（書庫の中のパス・フォルダの本のファイル名）が
+入る。名前を返さない古い StackNest、PDF などページに名前の無い本では nil で、ページはこれまでどおり番号で読める。名前は
+本の中から来た信頼できない文字列なので、表示とページの見分けにだけ使い、ファイルのパスにしない。
+
+Set ``StackNestBookSession/Configuration-swift.struct/requestsPageNames`` and manifest requests add `?pageNames=1`;
+``StackNestBookManifest/pageNames`` then holds the names in StackNest page order (paths inside the archive, file
+names for folder books). It is nil with older StackNest versions and for books whose pages have no names, such as
+PDFs, and pages are still read by number. The names come from inside the book and aren't trusted: use them for
+display and to tell pages apart, never as file system paths.
+
+```swift
+import StackNestViewerKit
+
+func pageLabels(_ session: StackNestBookSession) async throws -> [String] {
+    let manifest = try await session.manifest()
+    return manifest.pageNames ?? StackNestPageNaming.entryNames(pageCount: manifest.pageCount)
+}
+```
+
 ## メモリの量 / Memory Use
 
 リソースの監視を持つホストは、``StackNestBookSession/cachedPageBytes``（キャッシュに持っているページ）と

@@ -331,7 +331,7 @@ extension StackNestBookSession {
     func makeRequest(for key: RequestKey) -> URLRequest? {
         let suffix: String
         switch key {
-        case .manifest: suffix = "manifest"
+        case .manifest: suffix = configuration.requestsPageNames ? "manifest?pageNames=1" : "manifest"
         case .page(let index, let width): suffix = "pages/\(index)" + Self.widthQuery(width)
         case .cover(let width): suffix = "cover" + Self.widthQuery(width)
         case .progress: suffix = "progress"

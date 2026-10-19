@@ -46,6 +46,16 @@ struct StackNestBlockingReaderTests {
         #expect(throws: StackNestViewerError(.pageOutOfRange, pageCount: 2)) { try shrunkResult.get() }
     }
 
+    @Test("同期の顔でも requestsPageNames の manifest は名前を持つ（要求は ?pageNames=1）")
+    func blockingManifestCarriesPageNames() async throws {
+        let stub = StackNestStubServer(pageCount: 2)
+        stub.setPageNames(["a/1.jpg", "a/2.jpg"])
+        let blocking = reader(try makeSession(stub) { $0.requestsPageNames = true })
+        let result = await onThread { Result { try blocking.manifest() } }
+        #expect(try result.get().pageNames == ["a/1.jpg", "a/2.jpg"])
+        #expect(stub.requests.map(\.url.query) == ["pageNames=1"])
+    }
+
     @Test("同期の顔の読み直しと 404 の後の確かめも、前から飛んでいる manifest の要求に乗らない")
     func blockingRefreshDoesNotJoinAnOlderFlight() async throws {
         let stub = StackNestStubServer(pageCount: 3)

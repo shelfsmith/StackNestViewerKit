@@ -21,6 +21,48 @@ struct StackNestSessionRequestTests {
         #expect(request.viewerHeader?.hasSuffix("; format=1; kit=\(StackNestViewerKitInfo.version)") == true)
     }
 
+    @Test("requestsPageNames: manifest の要求に ?pageNames=1 を付け、名前が manifest に出る。既定は付けない")
+    func manifestRequestsPageNamesWhenAsked() async throws {
+        let stub = StackNestStubServer(pageCount: 2)
+        stub.setPageNames(["x/1.jpg", "x/2.jpg"])
+        let plain = StackNestBookSession(reference: try stub.reference(), configuration: stub.configuration())
+        #expect(try await plain.manifest().pageNames == nil)
+        #expect(stub.requests.last?.url.query == nil)
+
+        var configuration = stub.configuration()
+        configuration.requestsPageNames = true
+        let asking = StackNestBookSession(reference: try stub.reference(), configuration: configuration)
+        #expect(try await asking.manifest().pageNames == ["x/1.jpg", "x/2.jpg"])
+        let request = try #require(stub.requests.last)
+        #expect(request.route == .manifest)
+        #expect(request.url.query == "pageNames=1")
+        #expect(request.carriesExpectedToken)
+    }
+
+    @Test("requestsPageNames: 名前を返さない StackNest（問い合わせを読み飛ばす）でも manifest は読め、ページも取れる")
+    func pageNamesAreOptionalOnTheServer() async throws {
+        let stub = StackNestStubServer(pageCount: 2)
+        var configuration = stub.configuration()
+        configuration.requestsPageNames = true
+        let session = StackNestBookSession(reference: try stub.reference(), configuration: configuration)
+        let manifest = try await session.manifest()
+        #expect(manifest.pageNames == nil)
+        #expect(manifest.pageCount == 2)
+        #expect(StackNestFixtures.marker(of: try await session.page(1).data) == 1)
+    }
+
+    @Test("requestsPageNames: ページ数と合わない名前は捨て、ページ数は manifest の値に従う")
+    func mismatchedPageNamesAreDropped() async throws {
+        let stub = StackNestStubServer(pageCount: 3)
+        stub.setPageNames(["1.jpg", "2.jpg"])
+        var configuration = stub.configuration()
+        configuration.requestsPageNames = true
+        let session = StackNestBookSession(reference: try stub.reference(), configuration: configuration)
+        let manifest = try await session.manifest()
+        #expect(manifest.pageNames == nil)
+        #expect(manifest.pageCount == 3)
+    }
+
     @Test("manifest は読んだものを使い回し、refresh: true で読み直す")
     func manifestIsReusedUntilRefreshed() async throws {
         let stub = StackNestStubServer(pageCount: 3)

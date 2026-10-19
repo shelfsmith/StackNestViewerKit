@@ -298,6 +298,49 @@ struct StackNestBookManifestTests {
         #expect(manifest == StackNestBookManifest(pageCount: 3, direction: nil, format: nil, etag: nil))
     }
 
+    @Test("pageNames を読む（書庫の中のパスの区切り / をそのまま持つ）。無ければ nil")
+    func parsesPageNames() throws {
+        let data = Data(#"{"pageCount":3,"pageNames":["a/001.jpg","a/002.jpg","b/001.png"]}"#.utf8)
+        #expect(try StackNestBookManifest.parse(data).pageNames == ["a/001.jpg", "a/002.jpg", "b/001.png"])
+        #expect(try StackNestBookManifest.parse(Data(#"{"pageCount":3}"#.utf8)).pageNames == nil)
+        #expect(try StackNestBookManifest.parse(Data(#"{"pageCount":0,"pageNames":[]}"#.utf8)).pageNames == [])
+    }
+
+    @Test("ページの名前の一覧は 1 つでも外れたら一覧ごと nil にし、manifest は断らない")
+    func dropsMalformedPageNames() throws {
+        let long = String(repeating: "あ", count: StackNestBookManifest.maxPageNameBytes / 3 + 1)
+        let bodies = [
+            #"{"pageCount":2,"pageNames":["a.jpg"]}"#,                 // 数が足りない
+            #"{"pageCount":2,"pageNames":["a.jpg","b.jpg","c.jpg"]}"#, // 多い
+            #"{"pageCount":2,"pageNames":["a.jpg",2]}"#,               // 文字列でない
+            #"{"pageCount":2,"pageNames":["a.jpg",""]}"#,              // 空
+            #"{"pageCount":2,"pageNames":["a.jpg","a.jpg"]}"#,         // 重複
+            #"{"pageCount":2,"pageNames":["a.jpg","b\nc.jpg"]}"#,      // 改行
+            #"{"pageCount":2,"pageNames":["a.jpg","b\u0000.jpg"]}"#,   // NUL
+            #"{"pageCount":2,"pageNames":"a.jpg"}"#,                   // 配列でない
+            #"{"pageCount":2,"pageNames":["a.jpg","b\u0085.jpg"]}"#,   // C1 制御文字（NEL）
+            #"{"pageCount":2,"pageNames":["a.jpg","b\u2028.jpg"]}"#,   // 行の区切り
+            #"{"pageCount":2,"pageNames":["a.jpg","b\u2029.jpg"]}"#,   // 段落の区切り
+            #"{"pageCount":2,"pageNames":["a.jpg","b\u202Egpj.exe"]}"#, // 右から左への上書き（拡張子の偽装）
+            #"{"pageCount":2,"pageNames":["a.jpg","b\u2066.jpg"]}"#,   // 双方向の分離
+            #"{"pageCount":2,"pageNames":["\u00e9.jpg","e\u0301.jpg"]}"#, // NFC と NFD（正準等価で同じ名前）
+            "{\"pageCount\":2,\"pageNames\":[\"a.jpg\",\"\(long)\"]}", // 長すぎる
+        ]
+        for body in bodies {
+            let manifest = try StackNestBookManifest.parse(Data(body.utf8))
+            #expect(manifest.pageNames == nil, "\(body)")
+            #expect(manifest.pageCount == 2)
+        }
+        // 表示を崩さない文字は通す（絵文字の ZWJ・U+2027・U+202F・U+2065・U+206A・U+00A0、大文字と小文字の違い）。
+        let fine = ["👨\u{200D}👩.jpg", "a\u{2027}b.jpg", "a\u{202F}b.jpg", "a\u{2065}b.jpg", "a\u{206A}b.jpg",
+                    "a\u{00A0}b.jpg", "A.jpg", "a.jpg", "é.jpg"]
+        let encoded = try JSONSerialization.data(withJSONObject: ["pageCount": fine.count, "pageNames": fine])
+        #expect(try StackNestBookManifest.parse(encoded).pageNames == fine)
+        let exact = String(repeating: "a", count: StackNestBookManifest.maxPageNameBytes)
+        #expect(try StackNestBookManifest.parse(Data("{\"pageCount\":1,\"pageNames\":[\"\(exact)\"]}".utf8))
+                    .pageNames == [exact])
+    }
+
     @Test("ページ数が無い・整数でない・上限を超える・壊れた JSON は .invalidResponse")
     func rejectsBrokenManifests() {
         for body in [#"{}"#, #"{"pageCount":"3"}"#, #"{"pageCount":true}"#, #"{"pageCount":1.5}"#,

@@ -65,6 +65,7 @@ public final class StackNestStubServer: @unchecked Sendable {
     private let lock = NSLock()
     private var pageCount: Int
     private var direction: String
+    private var pageNames: [String]?
     private var expectedToken = "fixture-token"
     private var responses: [Route: Response] = [:]
     private var gates: [Route: StubGate] = [:]
@@ -132,6 +133,14 @@ public final class StackNestStubServer: @unchecked Sendable {
     /// manifest が答えるページ数を変える。 / Changes the page count the manifest reports.
     public func setPageCount(_ count: Int) { lock.withLock { pageCount = count } }
 
+    /// manifest が `?pageNames=1` の要求に答えるページの名前（`pageNames`）を変える。nil なら付けない（既定）。
+    /// 問い合わせの無い manifest の要求には、StackNest と同じく付けない。数はページ数と合わせなくてよい（食い違いの試験）。
+    ///
+    /// Changes the `pageNames` the manifest reports for `?pageNames=1` requests; nil (the default) leaves them out.
+    /// Like StackNest, requests without the query never get them. The count needn't match the page count (to test
+    /// mismatches).
+    public func setPageNames(_ names: [String]?) { lock.withLock { pageNames = names } }
+
     /// 以後の `route` への応答を、返した門が開くまで止める。開け忘れても 60 秒で自動で流れる。同じ道に
     /// 続けて呼ぶと門は置き換わり、古い門で止まった応答は、その門が開くか 60 秒たつまで止まったままになる。
     ///
@@ -172,17 +181,20 @@ public final class StackNestStubServer: @unchecked Sendable {
                 carriesExpectedToken: authorization == "Bearer \(expectedToken)",
                 viewerHeader: request.value(forHTTPHeaderField: StackNestViewerIdentification.headerName),
                 progressPage: route == .progress ? Self.progressPage(body) : nil))
-            return (responses[route] ?? defaultResponse(route), gates[route])
+            let wantsNames = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.contains { $0.name == "pageNames" && $0.value == "1" } ?? false
+            return (responses[route] ?? defaultResponse(route, includesPageNames: wantsNames), gates[route])
         }
     }
 
     func noteStopped() { lock.withLock { stopped += 1 } }
 
-    private func defaultResponse(_ route: Route) -> Response {
+    private func defaultResponse(_ route: Route, includesPageNames: Bool) -> Response {
         switch route {
         case .manifest:
-            let body: [String: Any] = ["pageCount": pageCount, "direction": direction, "format": "archive",
+            var body: [String: Any] = ["pageCount": pageCount, "direction": direction, "format": "archive",
                                        "etag": "stub"]
+            if includesPageNames, let pageNames { body["pageNames"] = pageNames }
             return .status(200, headers: ["Content-Type": "application/json"],
                            body: try! JSONSerialization.data(withJSONObject: body))
         case .page(let index) where index < pageCount:
