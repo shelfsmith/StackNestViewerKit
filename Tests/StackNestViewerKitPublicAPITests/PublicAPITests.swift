@@ -73,6 +73,17 @@ struct PublicAPITests {
         #expect(stub.requests.map(\.route) == [.manifest, .page(0)])
     }
 
+    @Test("組の印を作り、参照ファイルに付けて読み戻せる（公開の面だけで）")
+    func handoffGroupThroughThePublicSurface() throws {
+        let stub = StackNestStubServer(pageCount: 1)
+        let group = try StackNestHandoffGroup(id: "publicAPI-group", index: 0, count: 2)
+        let reference = try stub.reference().with(handoff: group)
+        #expect(reference.handoff == group)
+        #expect(try StackNestBookReference.parse(reference.encodedJSON()).handoff == group)
+        #expect(throws: (any Error).self) { try StackNestHandoffGroup(id: "x", index: 0, count: 1) }
+        #expect(reference.with(handoff: nil).handoff == nil)
+    }
+
     @Test("ビューアの試験に置く自己点検（Info.plist の宣言）")
     func selfCheckOfTheDeclaration() {
         let info: [String: Any] = [StackNestViewerSupport.infoPlistKey: [StackNestViewerSupport.versionsKey: [1]]]

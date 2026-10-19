@@ -31,12 +31,30 @@ public struct StackNestBookReference: Sendable, Hashable, CustomStringConvertibl
     public let direction: StackNestReadingDirection?
     /// 開くページ（0 始まり・StackNest のページ番号）。 / The page to open (0-based StackNest page number).
     public let startPage: Int
+    /// いっしょに渡した本の組（`handoff`）。1 冊だけ渡したとき・古い StackNest・形の外れた値では nil。
+    ///
+    /// The group of books handed over together (`handoff`); nil for a single book, older StackNest versions and
+    /// malformed values.
+    public let handoff: StackNestHandoffGroup?
 
     /// 作る側。読む側と同じ検査に通らない値は投げる（作った参照ファイルが必ず読めることを型で保証する）。
     ///
     /// For the producer. Throws for values a reader would refuse, so every file it writes can be read back.
     public init(version: Int, title: String, bookURL: URL, token: String, expiresAt: Date,
                 pageCount: Int, direction: StackNestReadingDirection, startPage: Int) throws
+    {
+        try self.init(version: version, title: title, bookURL: bookURL, token: token, expiresAt: expiresAt,
+                      pageCount: pageCount, direction: direction, startPage: startPage, handoff: nil)
+    }
+
+    /// 作る側（組つき）。前の版の `init(version:title:bookURL:token:expiresAt:pageCount:direction:startPage:)` を残すため、
+    /// 既定値ではなく別の init にする（既定値の引数を足すと、前の版の init が公開の面から消える）。
+    ///
+    /// For the producer, with a group. A separate initializer rather than a defaulted argument keeps the previous
+    /// initializer in the public interface.
+    public init(version: Int, title: String, bookURL: URL, token: String, expiresAt: Date,
+                pageCount: Int, direction: StackNestReadingDirection, startPage: Int,
+                handoff: StackNestHandoffGroup?) throws
     {
         guard version >= 1 else { throw StackNestViewerError(.invalidReference) }
         guard StackNestFormat.supportedVersions.contains(version) else {
@@ -49,12 +67,12 @@ public struct StackNestBookReference: Sendable, Hashable, CustomStringConvertibl
         else { throw StackNestViewerError(.invalidReference) }
         // 絶対形で持つ（相対 URL でも、書いて読み直した値と == になる）。
         self.init(uncheckedVersion: version, title: title, bookURL: bookURL.absoluteURL, token: token, expiresAt: expiresAt,
-                  pageCount: pageCount, direction: direction, startPage: startPage)
+                  pageCount: pageCount, direction: direction, startPage: startPage, handoff: handoff)
     }
 
     /// 検査を済ませた値から作る（`parse` と `init` の後段。試験は伏せ字の多重の守りを確かめるのに使う）。
     init(uncheckedVersion version: Int, title: String, bookURL: URL, token: String, expiresAt: Date,
-         pageCount: Int, direction: StackNestReadingDirection?, startPage: Int)
+         pageCount: Int, direction: StackNestReadingDirection?, startPage: Int, handoff: StackNestHandoffGroup? = nil)
     {
         self.version = version
         self.title = title
@@ -64,6 +82,7 @@ public struct StackNestBookReference: Sendable, Hashable, CustomStringConvertibl
         self.pageCount = pageCount
         self.direction = direction
         self.startPage = startPage
+        self.handoff = handoff
     }
 
     /// 参照ファイルの JSON を読む。形式が違う・必須の項目が無い・値の形が違うものは `.invalidReference`、
@@ -100,7 +119,7 @@ public struct StackNestBookReference: Sendable, Hashable, CustomStringConvertibl
             uncheckedVersion: version, title: root["title"] as? String ?? "", bookURL: bookURL, token: token,
             expiresAt: expiresAt, pageCount: pageCount,
             direction: (root["direction"] as? String).map(StackNestReadingDirection.init(rawValue:)),
-            startPage: startPage)
+            startPage: startPage, handoff: StackNestHandoffGroup.parse(root["handoff"]))
     }
 
     /// ファイルから読む。上限（`StackNestFormat.maxFileBytes`）＋1 バイトまでしか読まない（大きさを先に調べると、
@@ -117,6 +136,16 @@ public struct StackNestBookReference: Sendable, Hashable, CustomStringConvertibl
               data.count <= StackNestFormat.maxFileBytes
         else { throw invalid }
         return try parse(data)
+    }
+
+    /// 組（`handoff`）だけを差し替えた写し（作る側が、組の冊数が決まってから書き込むため。ほかの値は検査済みのまま）。
+    ///
+    /// A copy with only `handoff` replaced (for producers that learn the group's size after building the
+    /// references; the other values are already checked).
+    public func with(handoff: StackNestHandoffGroup?) -> StackNestBookReference {
+        StackNestBookReference(uncheckedVersion: version, title: title, bookURL: bookURL, token: token,
+                               expiresAt: expiresAt, pageCount: pageCount, direction: direction,
+                               startPage: startPage, handoff: handoff)
     }
 
     /// 期限を過ぎているか。期限の時刻ちょうどから切れている。 / Whether the token has expired (from `expiresAt` on).
@@ -175,7 +204,8 @@ public struct StackNestBookReference: Sendable, Hashable, CustomStringConvertibl
     public var description: String {
         "StackNestBookReference(version: \(version), title: \(title), book: \(redactedBookURL.absoluteString), "
             + "token: <redacted>, expiresAt: \(expiresAt), pageCount: \(pageCount), "
-            + "direction: \(direction?.rawValue ?? "nil"), startPage: \(startPage))"
+            + "direction: \(direction?.rawValue ?? "nil"), startPage: \(startPage)"
+            + (handoff.map { ", handoff: \($0.id) \($0.index + 1)/\($0.count)" } ?? "") + ")"
     }
 
     /// `description` と同じ（伏せ字つき）。 / Same as `description` (redacted).
@@ -183,14 +213,14 @@ public struct StackNestBookReference: Sendable, Hashable, CustomStringConvertibl
 
     /// `dump` などの反映。鍵は `<redacted>`。 / The mirror used by `dump` and friends; the token is `<redacted>`.
     public var customMirror: Mirror {
-        Mirror(
-            self,
-            children: [
-                "version": version, "title": title, "bookURL": redactedBookURL, "token": "<redacted>",
-                "expiresAt": expiresAt, "pageCount": pageCount, "direction": direction as Any,
-                "startPage": startPage,
-            ],
-            displayStyle: .struct)
+        // 組は有るときだけ出す（組の無い参照ファイルの dump は前の版と同じ）。
+        var children: [Mirror.Child] = [
+            ("version", version), ("title", title), ("bookURL", redactedBookURL), ("token", "<redacted>"),
+            ("expiresAt", expiresAt), ("pageCount", pageCount), ("direction", direction as Any),
+            ("startPage", startPage),
+        ]
+        if let handoff { children.append(("handoff", handoff)) }
+        return Mirror(self, children: children, displayStyle: .struct)
     }
 
     /// 説明に出す基点。資格情報（`user:pw@`）は読み込みで断るが、値が別の経路で作られても文字列に残さない。

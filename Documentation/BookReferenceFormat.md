@@ -68,10 +68,11 @@ Swift のビューアは、ここに書いたことをすべて実装した Stac
 | `pageCount` | 整数 | 開いた時点のページ数（正は `manifest`） |
 | `direction` | `"rtl"` / `"ltr"` | 開いた時点の読む方向（正は `manifest`） |
 | `startPage` | 整数（0 始まり） | 開いた時点の読書位置。ここから開く。`manifest` を読んだら、その `pageCount` に合わせて `0`…`pageCount - 1` に収めてから開く（本のページが減っていることがある。Swift のビューアは `clampedStartPage`） |
+| `handoff` | オブジェクト（任意） | いっしょに渡した本の組（`{"id": …, "index": …, "count": …}`）。複数の本を一度に渡したときだけ付く。[いっしょに渡した本](#いっしょに渡した本handoff)を見る |
 
 - 知らない項目は読み飛ばしてください（後の版で項目が増えても開けるように）。
-- `title` と `direction` は無くても開きます。`title` が無い、または文字列でないときは空の題名として扱い、`direction` が無い、または `"rtl"`・`"ltr"` 以外の値なら参照ファイルの向きは使いません（開いた後の読む方向は `manifest` の `direction` に従います）。それ以外の項目（`format`・`version`・`book`・`token`・`expiresAt`・`pageCount`・`startPage`）が無い、または型が違うファイルは開きません。
-- `version`・`pageCount`・`startPage` の「整数」は、JSON の数のうち真偽値でなく、小数部が無く（`5.0` は `5` として読む。`5.5` は整数でない）、絶対値が 10^15 未満のものです。
+- `title` と `direction` は無くても開きます。`title` が無い、または文字列でないときは空の題名として扱い、`direction` が無い、または `"rtl"`・`"ltr"` 以外の値なら参照ファイルの向きは使いません（開いた後の読む方向は `manifest` の `direction` に従います）。`handoff` も無くてよく、形が下の約束から外れていれば無いものとして扱い、1 冊として開きます。それ以外の項目（`format`・`version`・`book`・`token`・`expiresAt`・`pageCount`・`startPage`）が無い、または型が違うファイルは開きません。
+- `version`・`pageCount`・`startPage`（と `handoff` の `index`・`count`）の「整数」は、JSON の数のうち真偽値でなく、小数部が無く（`5.0` は `5` として読む。`5.5` は整数でない）、絶対値が 10^15 未満のものです。
 - 読み手は次のファイルを**断ります**（利用者には「StackNest から開き直してください」と案内してください）。
   - 読み出せない（開けない・読めない）、大きさが 1 MiB（1,048,576 バイト）を超える、または JSON のオブジェクトとして読めない
   - `format` が `stacknest-book-reference` でない、または `version` が 1 未満（壊れたファイル）
@@ -83,7 +84,7 @@ Swift のビューアは、ここに書いたことをすべて実装した Stac
   - `startPage` が整数でない、負、または 10^15 以上。10^15 未満で `pageCount` を超える値は断らず、`0` から `pageCount - 1` に収めて開く
 - 期限（`expiresAt`）を過ぎたファイルは、読み込み自体は通り、期限切れとして報告されます。StackNestViewerKit は、期限切れの参照ファイルでもセッションを作れます（`init(contentsOf:)` は成功します）が、最初の要求（`manifest()` など）が通信せずに期限切れ（`expired`）で失敗します。読み手は期限を確かめて、利用者に「StackNest から開き直してください」と案内してください。
 - 形式の検査は、`book` のホストを絞りません（LAN や IPv6 のアドレスも形式としては正しい）。接続先を絞るかどうかは読み手の判断です（StackNestViewerKit は既定で 127.0.0.1 と `::1` にだけつなぎます。下の「ビューアへのお願い」）。
-- [Samples](Samples) で、`reference-v1`・`reference-v1-unknown-keys`・`reference-expired`・`reference-lan-host`・`reference-ipv6-zone` は形式としては読めます（`reference-expired` は期限切れで最初の要求が失敗するため、`reference-lan-host` と `reference-ipv6-zone` は既定の宛先の制限で、StackNestViewerKit は開きません）。`reference-credentials`（資格情報つき）・`reference-malformed`（壊れた JSON）・`reference-v2`（読めない版）は断ります。
+- [Samples](Samples) で、`reference-v1`・`reference-v1-handoff`（組の付いたもの）・`reference-v1-unknown-keys`・`reference-expired`・`reference-lan-host`・`reference-ipv6-zone` は形式としては読めます（`reference-expired` は期限切れで最初の要求が失敗するため、`reference-lan-host` と `reference-ipv6-zone` は既定の宛先の制限で、StackNestViewerKit は開きません）。`reference-credentials`（資格情報つき）・`reference-malformed`（壊れた JSON）・`reference-v2`（読めない版）は断ります。
 - ローカルの書庫の本では `book` が `http://127.0.0.1:<port>/api/v1/libraries/<lib>/books/<id>` になります（その Mac の中だけで待ち受ける口）。
 - **リモートの書庫の本も、`book` は `http://127.0.0.1:<port>/api/v1/relay/<relayID>` になります**（試用）。StackNest がこの口で受けた要求を、リモートのサーバへ中継します。実測では、サンドボックスのビューアが `NSAllowsLocalNetworking` の下で届くのは 127.0.0.1 とプライベートのアドレスまでで、Tailscale のアドレス（100.64.0.0/10）や公開のアドレスへの平文の HTTP は App Transport Security に止められます。そのため StackNest がリモートの本を中継し、ビューアはいつも手元の 127.0.0.1 につなげば済むようにしています。下の 4 つの API はローカルの本と同じで、ビューアは `book` の形を見分ける必要はありません。リモートのサーバの鍵はビューアには渡りません（参照ファイルの `token` は中継用の鍵で、`expiresAt` は発行から 30 日とリモートの鍵の期限の早い方です）。
 - この口は StackNest が起動していて設定が ON のあいだだけ動き、ポートも変わることがあります。接続を拒まれたら、「StackNest から開き直してください」と表示してください。StackNest を終了すると中継は消えるので、その後の要求は **401** になります（中継の期限が切れたときも同じです。「StackNest から開き直してください」と表示してください）。中継の取り次ぎでリモートのサーバに届かない・応答が大きすぎる・リダイレクトされたときは **502** です。中継の `progress` に 64 KiB を超える本文を送ると **413** で、リモートには取り次ぎません。リモートの応答（403・404 や `X-Library-Locked` を含む）はそのまま返します。リモートが中継を **401・403** で断ったら（パスワードの変更・接続の取り消しなど）、StackNest はその応答を返したうえで中継を閉じるので、以後の要求はキャッシュにあるページも含めて **401** になります（「StackNest から開き直してください」と表示してください）。
@@ -130,6 +131,26 @@ X-StackNest-Viewer: <bundle id>/<ビューアの版>; format=<参照ファイル
 - bundle id・ビューアの版・部品の版に使う文字は `A-Z a-z 0-9 . _ + -` だけです（StackNestViewerKit はほかの文字を `_` に替えます）。bundle id とビューアの版は 64 文字まで、部品の版は 16 文字までなので、全体が 200 文字に収まります。
 - StackNest はヘッダが無くても要求を拒みません。トークンが初めて使われたときに、その日時とこのヘッダの値を一度だけ記録します（印字できる ASCII だけを残し、200 文字で切ります）。記録は、設定の「外部ビューア」の節で、どのビューアの対応を確認できたか（日時と版）を示すのに使います。記録には `kit=` を含む値がそのまま残り、設定に出すのは bundle id・ビューアの版・`format` です。
 
+## いっしょに渡した本（handoff）
+
+利用者が StackNest で複数の本を選んで外部ビューアで開くと、StackNest はそのビューアへ渡す本ごとに参照ファイルを書き、どの参照ファイルにも同じ組の印を入れます。
+
+```json
+"handoff": {"id": "ZXhhbXBsZS1oYW5kb2Zm", "index": 1, "count": 3}
+```
+
+| 項目 | 型 | 意味 |
+|---|---|---|
+| `id` | 文字列 | 組の印（8〜64 文字の ASCII の英数字と `-`・`_`）。同じ組の参照ファイルは同じ値。等しいかだけを比べる |
+| `index` | 整数 | 組の中での位置（0 始まり）。StackNest の一覧で選んだ並び（一覧の表示順） |
+| `count` | 整数 | 組の冊数（`index` < `count` ≤ 10,000） |
+
+- 1 冊だけ渡すときは付きません。渡す先のアプリが本の種類（書庫・フォルダ・画像）で違うときは、アプリごとに別の組になります。
+- StackNest は組の参照ファイルを、アプリごとに 1 回の `open` でまとめて渡します。ただし、届き方（1 回の `application(_:open:)` で届くか、何回かに分かれるか、届く順）には頼らないでください。同じ `id` のものを集め、`index` で並べてください。`count` に満たないまま待ち続けないでください（組の一部が渡せなかったときは、その本の参照ファイルは届きません。最初の 1 冊が届いてから数秒で揃わなければ、届いた分で進めてください）。
+- 組をどう開くかはビューアが決めます（先頭を開いて残りを「次の本」に並べる、全部を別々の窓で開く、など）。**すぐに開かない本も、受け取った時点でそれぞれの `manifest` を取ってください**。StackNest は参照ファイルごとに、渡してから 15 秒後にトークンが使われたかを確かめます（[読まれたかの確認](#読まれたかの確認)）。
+- 形が上の約束から外れた `handoff`（`id` の文字・長さ、`index`・`count` の範囲や型）は、無いものとして扱います（参照ファイルは断らず、1 冊として開く）。StackNestViewerKit は `nil` にします。
+- `handoff` を知らない古いビューアは、知らない項目として読み飛ばし、届いた参照ファイルを今までどおり 1 冊ずつ開きます。
+
 ## 読まれたかの確認
 
 - StackNest は参照ファイルを渡してから一定時間後（既定 15 秒）に一度だけ、そのトークンが使われたかを確かめます。ローカルの本も中継するリモートの本も、手元の 127.0.0.1 の口の記録で確かめます（中継を使わずにリモートのサーバへ直接つなぐ形でだけ、トークンを発行した接続から `GET /api/v1/viewer-tokens/{tokenID}`（状態の API）で確かめます）。
@@ -174,3 +195,4 @@ API の詳しい仕様は StackNest のサーバが配る `/openapi.yaml`（`/do
 |---|---|
 | 2026-10-10 | StackNestViewerKit のリポジトリへ移した。名乗りの `kit=`・中継のページ・`token` の文字・`expiresAt` の読める形・StackNestViewerKit の既定の宛先（loopback）を書き足した |
 | 2026-10-18 | StackNestViewerKit が既定で `book` のパスの形を確かめること（`allowsAnyBookPath`）と、そのセキュリティ上の理由を書き足した |
+| 2026-10-19 | 参照ファイルの `handoff`（いっしょに渡した本の組）を書き足した |

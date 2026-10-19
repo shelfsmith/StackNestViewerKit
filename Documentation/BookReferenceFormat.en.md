@@ -68,10 +68,11 @@ To accept the reference file as a document, import this type with `UTImportedTyp
 | `pageCount` | integer | Page count when the book was opened (`manifest` is authoritative) |
 | `direction` | `"rtl"` / `"ltr"` | Reading direction when the book was opened (`manifest` is authoritative) |
 | `startPage` | integer (0-based) | Reading position when the book was opened. Open here, after clamping it into `0`…`pageCount - 1` of the `manifest` you read (the book may have shrunk; Swift viewers use `clampedStartPage`) |
+| `handoff` | object (optional) | The group of books handed over together (`{"id": …, "index": …, "count": …}`). Present only when several books are handed over at once. See [Books handed over together](#books-handed-over-together-handoff) |
 
 - Ignore keys you don't know, so that later versions that add keys still open.
-- `title` and `direction` may be absent, and the file still opens. A missing `title`, or one that isn't a string, is treated as an empty title; a missing `direction`, or a value other than `"rtl"` or `"ltr"`, means the file's direction isn't used (after opening, follow `direction` from `manifest`). A file that lacks any other key (`format`, `version`, `book`, `token`, `expiresAt`, `pageCount`, `startPage`), or has one of the wrong type, is refused.
-- "Integer" for `version`, `pageCount` and `startPage` means a JSON number that isn't a boolean, has no fractional part (`5.0` is read as `5`; `5.5` is not an integer) and has an absolute value below 10^15.
+- `title` and `direction` may be absent, and the file still opens. A missing `title`, or one that isn't a string, is treated as an empty title; a missing `direction`, or a value other than `"rtl"` or `"ltr"`, means the file's direction isn't used (after opening, follow `direction` from `manifest`). `handoff` may be absent too; one that doesn't follow the rules below is treated as absent and the file opens as a single book. A file that lacks any other key (`format`, `version`, `book`, `token`, `expiresAt`, `pageCount`, `startPage`), or has one of the wrong type, is refused.
+- "Integer" for `version`, `pageCount` and `startPage` (and `handoff`'s `index` and `count`) means a JSON number that isn't a boolean, has no fractional part (`5.0` is read as `5`; `5.5` is not an integer) and has an absolute value below 10^15.
 - A reader **refuses** these files (tell the reader to open the book from StackNest again):
   - can't be read (can't be opened or read), is larger than 1 MiB (1,048,576 bytes), or isn't readable as a JSON object
   - `format` is not `stacknest-book-reference`, or `version` is below 1 (a broken file)
@@ -83,7 +84,7 @@ To accept the reference file as a document, import this type with `UTImportedTyp
   - `startPage` is not an integer, is negative, or is 10^15 or more. A value below 10^15 that exceeds `pageCount` isn't refused; open at the nearest valid page, clamped to `0`…`pageCount - 1`
 - A file whose `expiresAt` has passed still parses, and is reported as expired. StackNestViewerKit can still create a session from an expired reference file (`init(contentsOf:)` succeeds), but the first request (`manifest()` and so on) fails with `expired` without a network request. A reader should check the expiry and tell the user to open the book from StackNest again.
 - The format check doesn't restrict the host of `book` (LAN and IPv6 addresses are valid as a format). Whether to restrict where to connect is the reader's decision (StackNestViewerKit connects only to 127.0.0.1 and `::1` by default; see "What we ask of viewers" below).
-- Among the [Samples](Samples), `reference-v1`, `reference-v1-unknown-keys`, `reference-expired`, `reference-lan-host` and `reference-ipv6-zone` are valid as a format (StackNestViewerKit still won't read `reference-expired`, because its first request fails as expired, nor `reference-lan-host` and `reference-ipv6-zone`, because of its default host restriction). `reference-credentials` (credentials in `book`), `reference-malformed` (broken JSON) and `reference-v2` (a version the reader can't read) are refused.
+- Among the [Samples](Samples), `reference-v1`, `reference-v1-handoff` (with a group), `reference-v1-unknown-keys`, `reference-expired`, `reference-lan-host` and `reference-ipv6-zone` are valid as a format (StackNestViewerKit still won't read `reference-expired`, because its first request fails as expired, nor `reference-lan-host` and `reference-ipv6-zone`, because of its default host restriction). `reference-credentials` (credentials in `book`), `reference-malformed` (broken JSON) and `reference-v2` (a version the reader can't read) are refused.
 - For a book in a local library, `book` is `http://127.0.0.1:<port>/api/v1/libraries/<lib>/books/<id>` (an endpoint that listens on that Mac only).
 - **For a book in a remote library, `book` is also on 127.0.0.1: `http://127.0.0.1:<port>/api/v1/relay/<relayID>`** (trial). StackNest relays the requests it receives there to the remote server. Measured: a sandboxed viewer under `NSAllowsLocalNetworking` can reach loopback and private-range addresses, but App Transport Security blocks plain HTTP to Tailscale addresses (100.64.0.0/10) and public addresses. That is why StackNest relays remote books, so the viewer only ever connects to 127.0.0.1 on its own Mac. The four requests below are the same as for a local book, and the viewer doesn't need to tell the two forms of `book` apart. The remote server's token never reaches the viewer (the file's `token` is the relay's own token, and `expiresAt` is the earlier of 30 days after issue and the remote token's expiry).
 - The endpoint works only while StackNest is running with the setting on, and its port can change. If the connection is refused, tell the reader to open the book from StackNest again. Quitting StackNest drops its relays, so later requests get **401** (so does an expired relay; again, tell the reader to open the book from StackNest again). A relayed request gets **502** when the remote server can't be reached, the response is too large, or it redirects. A relayed `progress` body over 64 KiB gets **413** and is not forwarded. Other remote responses (including 403, 404 and `X-Library-Locked`) are passed through unchanged. When the remote server refuses the relay with **401 or 403** (a changed password, revoked access and so on), StackNest passes that response through and closes the relay, so later requests get **401**, even for pages it has cached (tell the reader to open the book from StackNest again).
@@ -130,6 +131,26 @@ Example: `X-StackNest-Viewer: com.example.viewer/1.80; format=1; kit=0.1.0`
 - The bundle ID, the viewer version and the kit version use only `A-Z a-z 0-9 . _ + -` (StackNestViewerKit replaces other characters with `_`). The bundle ID and the viewer version are at most 64 characters and the kit version at most 16, so the whole value fits in 200 characters.
 - StackNest doesn't refuse a request without it. The first time the token is used, StackNest records the time and this header's value once (printable ASCII only, cut at 200 characters). Settings ▸ View ▸ External Viewer uses the record to show which viewer has been confirmed to work (with the date and version). The record keeps the whole value, `kit=` included; the setting shows the bundle ID, the viewer version and `format`.
 
+## Books handed over together (handoff)
+
+When the reader selects several books in StackNest and opens them in an external viewer, StackNest writes a reference file for each book handed to that viewer and puts the same group mark in every one of them.
+
+```json
+"handoff": {"id": "ZXhhbXBsZS1oYW5kb2Zm", "index": 1, "count": 3}
+```
+
+| Key | Type | Meaning |
+|---|---|---|
+| `id` | string | The group's mark (8 to 64 ASCII letters, digits, `-` and `_`). Reference files of one group share it. Compare it for equality only |
+| `index` | integer | The position in the group (0-based): the order of the selection in StackNest's list (its display order) |
+| `count` | integer | The number of books in the group (`index` < `count` ≤ 10,000) |
+
+- A single book never gets it. When the books go to different apps because of their kind (archive, folder, image), each app gets its own group.
+- StackNest hands each app the group's reference files in one `open`. Still, don't rely on how they arrive (in one `application(_:open:)`, split across several, or in which order): collect the files sharing an `id` and order them by `index`. Don't wait forever for `count` files (a book that couldn't be handed over sends no file); if the group isn't complete a few seconds after the first file arrives, go on with what arrived.
+- How to open the group is up to the viewer (open the first and keep the rest as the next books, open each in its own window, and so on). **Fetch each book's `manifest` as soon as its file arrives, even for books you don't open right away.** StackNest checks, for each reference file, whether its token was used 15 seconds after handing it over (see [Checking that the book was loaded](#checking-that-the-book-was-loaded)).
+- A `handoff` that doesn't follow the rules above (the characters or length of `id`, the range or type of `index` and `count`) is treated as absent: the file isn't refused and opens as a single book. StackNestViewerKit gives `nil`.
+- Older viewers that don't know `handoff` skip it as an unknown key and keep opening each file as a single book.
+
 ## Checking that the book was loaded
 
 - A while after the hand-off (15 seconds by default), StackNest checks once whether the token was used, from the records of its own 127.0.0.1 endpoint, for local books and relayed remote books alike. (Only in the form that connects to the remote server directly instead of relaying does it check through the status API, `GET /api/v1/viewer-tokens/{tokenID}`, from the connection that issued the token.)
@@ -174,3 +195,4 @@ Changes to this document that don't change the format version.
 |---|---|
 | 2026-10-10 | Moved to the StackNestViewerKit repository. Added `kit=` to the identification header, relayed pages, the characters of `token`, the accepted forms of `expiresAt` and StackNestViewerKit's loopback default |
 | 2026-10-18 | Added that StackNestViewerKit checks the shape of the `book` path by default (`allowsAnyBookPath`), and the security reason for it |
+| 2026-10-19 | Added `handoff` (the group of books handed over together) to the reference file |

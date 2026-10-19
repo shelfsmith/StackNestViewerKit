@@ -23,6 +23,20 @@ struct StackNestBookReferenceEncodingTests {
         #expect(golden.count == 334)
     }
 
+    @Test("golden: 組（handoff）の付いた encodedJSON() が Documentation/Samples/reference-v1-handoff.stacknestbook と一致し、古い読み手も読める")
+    func handoffEncodingMatchesGolden() throws {
+        let base = try Self.goldenReference()
+        let reference = try StackNestBookReference(
+            version: 1, title: base.title, bookURL: base.bookURL, token: base.token, expiresAt: base.expiresAt,
+            pageCount: base.pageCount, direction: .rightToLeft, startPage: base.startPage,
+            handoff: try StackNestHandoffGroup(id: "ZXhhbXBsZS1oYW5kb2Zm", index: 1, count: 3))
+        let golden = try DocumentationSamples.data("reference-v1-handoff.stacknestbook")
+        #expect(try reference.encodedJSON() == golden)
+        #expect(try StackNestBookReference.parse(golden) == reference)
+        // 部品より前の読み手は知らない項目として読み飛ばす（組を知らないビューアも 1 冊として開ける）。
+        #expect(try LegacyReferenceReader.parse(golden).startPage == 41)
+    }
+
     @Test("golden: 部品より前の読み手（凍結した写し）が golden を読める")
     func legacyReaderReadsGolden() throws {
         let legacy = try LegacyReferenceReader.parse(try DocumentationSamples.data("reference-v1.stacknestbook"))
@@ -104,7 +118,8 @@ struct DocumentationSampleTests {
         #expect(try DocumentationSamples.fileNames() == [
             "reference-credentials.stacknestbook", "reference-expired.stacknestbook",
             "reference-ipv6-zone.stacknestbook", "reference-lan-host.stacknestbook",
-            "reference-malformed.stacknestbook", "reference-v1-unknown-keys.stacknestbook",
+            "reference-malformed.stacknestbook", "reference-v1-handoff.stacknestbook",
+            "reference-v1-unknown-keys.stacknestbook",
             "reference-v1.stacknestbook", "reference-v2.stacknestbook",
         ])
     }
@@ -120,6 +135,9 @@ struct DocumentationSampleTests {
         #expect(zone.bookURL.host(percentEncoded: false) == "fe80::1%en0")
         let lan = try StackNestBookReference.parse(try DocumentationSamples.data("reference-lan-host.stacknestbook"))
         #expect(lan.bookURL.host(percentEncoded: false) == "192.0.2.1", "形式はホストを絞らない（絞るのはセッション）")
+        let grouped = try StackNestBookReference.parse(try DocumentationSamples.data("reference-v1-handoff.stacknestbook"))
+        #expect(grouped.handoff?.index == 1)
+        #expect(grouped.handoff?.count == 3)
     }
 
     @Test("読めないサンプル")

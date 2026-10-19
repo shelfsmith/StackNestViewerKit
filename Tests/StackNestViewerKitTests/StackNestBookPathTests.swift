@@ -134,7 +134,8 @@ struct StackNestBookPathTests {
             #expect(StackNestBookPath.isStackNestShape(reference.bookURL), "\(name)")
         }
         #expect(readable == ["reference-expired.stacknestbook", "reference-ipv6-zone.stacknestbook",
-                             "reference-lan-host.stacknestbook", "reference-v1-unknown-keys.stacknestbook",
+                             "reference-lan-host.stacknestbook", "reference-v1-handoff.stacknestbook",
+                             "reference-v1-unknown-keys.stacknestbook",
                              "reference-v1.stacknestbook"])
         // 既定の設定で、読めるサンプルが開ける（期限切れ・LAN・IPv6 の区域は、最初の要求か開く時点で別の理由で断る）。
         let session = try StackNestBookSession(contentsOf: directory.appendingPathComponent("reference-v1.stacknestbook"))

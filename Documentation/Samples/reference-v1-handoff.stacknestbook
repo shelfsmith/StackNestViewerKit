@@ -1,0 +1,16 @@
+{
+  "book" : "http://127.0.0.1:51234/api/v1/libraries/00000000-0000-4000-8000-000000000001/books/42",
+  "direction" : "rtl",
+  "expiresAt" : "2099-12-31T00:00:00Z",
+  "format" : "stacknest-book-reference",
+  "handoff" : {
+    "count" : 3,
+    "id" : "ZXhhbXBsZS1oYW5kb2Zm",
+    "index" : 1
+  },
+  "pageCount" : 180,
+  "startPage" : 41,
+  "title" : "Example Book",
+  "token" : "example-token-not-a-secret",
+  "version" : 1
+}

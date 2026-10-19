@@ -24,6 +24,14 @@ extension StackNestBookReference {
         let pageCount: Int
         let direction: String?
         let startPage: Int
+        /// nil なら項目ごと書かない（1 冊だけの参照ファイルのバイト列は前と同じ）。
+        let handoff: HandoffWire?
+
+        struct HandoffWire: Encodable {
+            let id: String
+            let index: Int
+            let count: Int
+        }
 
         init(_ reference: StackNestBookReference) {
             format = StackNestFormat.formatName
@@ -35,6 +43,7 @@ extension StackNestBookReference {
             pageCount = reference.pageCount
             direction = reference.direction?.rawValue
             startPage = reference.startPage
+            handoff = reference.handoff.map { HandoffWire(id: $0.id, index: $0.index, count: $0.count) }
         }
     }
 }

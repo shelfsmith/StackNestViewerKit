@@ -308,3 +308,78 @@ struct StackNestBookManifestTests {
         }
     }
 }
+
+@Suite("いっしょに渡した本の組（handoff）")
+struct StackNestHandoffGroupTests {
+    static func json(handoff: String?) -> Data {
+        var text = String(decoding: StackNestBookReferenceTests.json(removing: []), as: UTF8.self)
+        if let handoff {
+            text = String(text.dropLast()) + ",\"handoff\":\(handoff)}"
+        }
+        return Data(text.utf8)
+    }
+
+    @Test("組を読む。無ければ nil")
+    func parsesHandoff() throws {
+        let reference = try StackNestBookReference.parse(Self.json(handoff: #"{"id":"abcdEFGH-_12","index":2,"count":5}"#))
+        #expect(reference.handoff == (try StackNestHandoffGroup(id: "abcdEFGH-_12", index: 2, count: 5)))
+        #expect(try StackNestBookReference.parse(Self.json(handoff: nil)).handoff == nil)
+        #expect(try StackNestBookReference.parse(Self.json(handoff: #"{"id":"abcdEFGH","index":0,"count":1}"#)).handoff?.count == 1)
+    }
+
+    @Test("dump は組が有るときだけ handoff を出す（組の無い参照ファイルの dump は前と同じ）")
+    func dumpShowsTheGroupOnlyWhenPresent() throws {
+        var plain = ""
+        dump(try StackNestBookReference.parse(Self.json(handoff: nil)), to: &plain)
+        #expect(!plain.contains("handoff"))
+        var grouped = ""
+        dump(try StackNestBookReference.parse(Self.json(handoff: #"{"id":"abcdEFGH","index":0,"count":2}"#)), to: &grouped)
+        #expect(grouped.contains("handoff"))
+        #expect(grouped.contains("abcdEFGH"))
+    }
+
+    @Test("形の外れた組は参照ファイルを断らずに nil にする")
+    func ignoresMalformedHandoff() throws {
+        for value in [#""abc""#, #"[]"#, #"{"index":0,"count":2}"#, #"{"id":"abcdEFGH","count":2}"#,
+                      #"{"id":"abcdEFGH","index":0}"#, #"{"id":"short","index":0,"count":2}"#,
+                      #"{"id":"abcd EFGH","index":0,"count":2}"#, #"{"id":"abcd/EFGH","index":0,"count":2}"#,
+                      #"{"id":"abcdEFGH","index":2,"count":2}"#, #"{"id":"abcdEFGH","index":-1,"count":2}"#,
+                      #"{"id":"abcdEFGH","index":0,"count":0}"#, #"{"id":"abcdEFGH","index":0,"count":10001}"#,
+                      #"{"id":"abcdEFGH","index":true,"count":2}"#, #"{"id":"abcdEFGH","index":0.5,"count":2}"#,
+                      "{\"id\":\"\(String(repeating: "a", count: 65))\",\"index\":0,\"count\":2}"] {
+            let reference = try StackNestBookReference.parse(Self.json(handoff: value))
+            #expect(reference.handoff == nil, "\(value)")
+            #expect(reference.pageCount > 0)
+        }
+    }
+
+    @Test("作る側は読む側が捨てる組を作れない")
+    func producerRejectsInvalidGroups() throws {
+        for (id, index, count) in [("short", 0, 2), ("abcdEFGH", 2, 2), ("abcdEFGH", -1, 2), ("abcdEFGH", 0, 0),
+                                   ("abcdEFGH", 0, StackNestHandoffGroup.maxCount + 1), ("abcd=EFGH", 0, 2)] {
+            #expect(throws: StackNestViewerError(.invalidReference), "\(id) \(index) \(count)") {
+                try StackNestHandoffGroup(id: id, index: index, count: count)
+            }
+        }
+        let edge = try StackNestHandoffGroup(id: String(repeating: "a", count: 64), index: 9_999,
+                                             count: StackNestHandoffGroup.maxCount)
+        #expect(edge.index == 9_999)
+    }
+
+    @Test("with(handoff:) は組だけを差し替え、書いて読み直しても同じ")
+    func withHandoffReplacesOnlyTheGroup() throws {
+        let reference = try StackNestBookReference.parse(Self.json(handoff: nil))
+        let group = try StackNestHandoffGroup(id: "abcdEFGH", index: 0, count: 2)
+        let grouped = reference.with(handoff: group)
+        #expect(grouped.handoff == group)
+        #expect(grouped.with(handoff: nil) == reference)
+        #expect(try StackNestBookReference.parse(grouped.encodedJSON()) == grouped)
+    }
+
+    @Test("組は description と dump に出る（秘密ではない）。鍵は出ない")
+    func descriptionShowsHandoff() throws {
+        let reference = try StackNestBookReference.parse(Self.json(handoff: #"{"id":"abcdEFGH","index":1,"count":3}"#))
+        #expect(reference.description.contains("handoff: abcdEFGH 2/3"))
+        #expect(!reference.description.contains(reference.token))
+    }
+}
