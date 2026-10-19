@@ -105,6 +105,15 @@ Send `Authorization: Bearer <token>` and the [identification header](#identifica
 - **404** means the book is gone (removed from the library, or the server closed the library). For `pages/{n}`, a page number past the end is also **404**. A **404** on `cover` can also mean the book has no cover image.
 - `pages/{n}` returns **500** when a page can't be rendered, and `progress` returns **400** for a negative page.
 
+### Book identity (`bookIdentity`)
+
+`manifest` may carry `bookIdentity` (a string). Viewers can use it as the key for what they keep per book (bookmarks, per-page layout and so on).
+
+- For the same book of the same library it stays the same across renames, moving the file and relinking it in StackNest, StackNest restarts (even when the port changes) and the relay for remote books. A book removed and imported again gets a new value (StackNest also treats it as a different book).
+- Compare the value for equality only; don't read meaning into it (how StackNest makes it may change). It uses ASCII letters, digits and `-._~:` only, 1 to 128 characters. Readers treat a value of any other shape as absent (StackNestViewerKit gives `nil`).
+- Older StackNest versions, or an older remote server, don't send it. Then treat the book as one you can't recognise again (the reference file's `book` can change on every handoff, so it can't serve as a key).
+- Whether the book's contents changed (pages replaced and so on) shows in `etag`, which changes when the file is updated or relinked; it can't tell you whether it is the same book.
+
 ### Relayed pages
 
 For a remote book (a `book` under `/api/v1/relay/`), `pages/{n}` without `maxw` (or with `maxw=1600`) returns the same image StackNest's built-in viewer gets. StackNest keeps relayed pages in its local cache, shares them with the built-in viewer, and after the hand-off prefetches the pages around the one being read (or every page, depending on StackNest's settings) in the background:
@@ -136,6 +145,23 @@ Example: `X-StackNest-Viewer: com.example.viewer/1.80; format=1; kit=0.1.0`
 - For a relay token, "used" means the viewer **reached** the 127.0.0.1 endpoint with a valid relay token, not that it loaded a page (it is recorded even if the remote answers 502, as soon as a request such as `manifest` arrives). A relay token's record carries no real library or book but a sentinel identity (library `"relay"`, book 0); viewers needn't care.
 - If it wasn't used yet, StackNest tells the reader that the app hasn't loaded the book and offers a button to open it the usual way (a local book as the file, a remote book in the built-in viewer). The token isn't revoked, so a viewer that starts late still works.
 - When you receive a reference file, fetch `manifest` first, so the open is noticed early.
+
+## Asking StackNest to hand a book over again (`stacknest://viewer/reopen`)
+
+A reference file can't be kept and opened later (its token expires, ports and relay ids change with every hand-off, and StackNest may not be running). To reopen a StackNest book from history or saved data (bookmarks and so on), open the following URL and StackNest hands the book over again.
+
+```
+stacknest://viewer/reopen?library=<library UUID>&book=<book number>&identity=<bookIdentity>
+```
+
+- Take `library` and `book` from the `/api/v1/libraries/<UUID>/books/<number>` of the reference file's `book`, and `identity` from the manifest's `bookIdentity`. Only **books of local libraries for which you received a `bookIdentity`** can be requested (not relayed remote books, nor books from an older StackNest that sends no `bookIdentity`). The URL carries no token.
+- The viewer just opens the URL, with `NSWorkspace.open` for example; macOS launches StackNest if it isn't running. Nothing comes back to the viewer: the result is a normal hand-off (a reference file with a fresh token, opening at StackNest's reading position) or a notice in StackNest.
+- When no app opens the URL (`open` fails), StackNest isn't installed or is an older version without this request (telling the user to update StackNest is fine).
+- StackNest hands the book over only when the library is open in StackNest, or it has handed a book of that library to an external viewer before and remembers where the library is (it opens the library if needed and waits for it to be unlocked); the numbered book still exists and its `bookIdentity` equals `identity` (a reused number never opens another book); and the requesting app is the external viewer the book would be handed to now (the "External Viewer" settings). Requests from other apps are refused.
+- Value shapes: `library` is an 8-4-4-4-12 UUID (case-insensitive; StackNestViewerKit writes it lowercased and StackNest compares it lowercased), `book` is a decimal number from 1 to 2^53−1 without leading zeros, and `identity` follows the rules of `bookIdentity`. Values are read as an ordinary URL query (percent-encoding is decoded before checking).
+- Readers ignore unknown query items (so later versions can add items) and refuse a URL whose `library`, `book` or `identity` is missing, repeated or malformed, whose host or path is percent-encoded, or that carries a port (even an empty one), credentials or a fragment. In StackNestViewerKit, `StackNestReopenRequest` makes and reads it.
+- Only books of the StackNest on the same Mac can be requested (`book`'s host is `127.0.0.1`, `::1` or `localhost`), not books of another Mac's StackNest reached directly.
+- Opening the URL without bringing StackNest to the front is recommended (`NSWorkspace.OpenConfiguration.activates = false`); StackNest comes forward by itself only when it needs to (to unlock a library, for example). Otherwise the front app switches from the viewer to StackNest and back while the book is on its way.
 
 ## What we ask of viewers
 
@@ -174,3 +200,5 @@ Changes to this document that don't change the format version.
 |---|---|
 | 2026-10-10 | Moved to the StackNestViewerKit repository. Added `kit=` to the identification header, relayed pages, the characters of `token`, the accepted forms of `expiresAt` and StackNestViewerKit's loopback default |
 | 2026-10-18 | Added that StackNestViewerKit checks the shape of the `book` path by default (`allowsAnyBookPath`), and the security reason for it |
+| 2026-10-19 | Added `bookIdentity` (the book's identity) to `manifest` |
+| 2026-10-19 | Added the request to hand a book over again (`stacknest://viewer/reopen`) |

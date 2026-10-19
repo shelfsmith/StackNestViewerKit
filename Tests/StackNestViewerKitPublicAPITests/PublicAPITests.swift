@@ -73,6 +73,31 @@ struct PublicAPITests {
         #expect(stub.requests.map(\.route) == [.manifest, .page(0)])
     }
 
+    @Test("本の同一性を公開の面だけで読める(見立て・manifest・形の検査)")
+    func bookIdentityThroughThePublicSurface() async throws {
+        let stub = StackNestStubServer(pageCount: 1)
+        stub.setBookIdentity("sn1-publicAPIidentity")
+        let session = StackNestBookSession(reference: try stub.reference(), configuration: stub.configuration())
+        #expect(try await session.manifest().bookIdentity == "sn1-publicAPIidentity")
+        #expect(StackNestBookManifest.isAcceptableBookIdentity("sn1-publicAPIidentity"))
+        #expect(!StackNestBookManifest.isAcceptableBookIdentity("has space"))
+        let made = StackNestBookManifest(pageCount: 1, direction: nil, format: nil, etag: nil, bookIdentity: "sn1-x")
+        #expect(made.bookIdentity == "sn1-x")
+        session.close()
+    }
+
+    @Test("もう一度渡す頼みを参照ファイルと同一性から作り、URL を読み戻せる（公開の面だけで）")
+    func reopenRequestThroughThePublicSurface() throws {
+        let stub = StackNestStubServer(pageCount: 1)
+        let identity = "sn1-publicAPIreopen"
+        let request = try #require(StackNestReopenRequest(reference: try stub.reference(), bookIdentity: identity))
+        #expect(request.url.scheme == StackNestReopenRequest.scheme)
+        #expect(StackNestReopenRequest(url: request.url) == request)
+        #expect(request.bookIdentity == identity)
+        let made = try StackNestReopenRequest(libraryUUID: request.libraryUUID, bookID: request.bookID, bookIdentity: identity)
+        #expect(made == request)
+    }
+
     @Test("ビューアの試験に置く自己点検（Info.plist の宣言）")
     func selfCheckOfTheDeclaration() {
         let info: [String: Any] = [StackNestViewerSupport.infoPlistKey: [StackNestViewerSupport.versionsKey: [1]]]

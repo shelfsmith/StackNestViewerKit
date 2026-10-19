@@ -21,6 +21,15 @@ struct StackNestSessionRequestTests {
         #expect(request.viewerHeader?.hasSuffix("; format=1; kit=\(StackNestViewerKitInfo.version)") == true)
     }
 
+    @Test("manifest の bookIdentity がセッションの manifest に出る（付かなければ nil）")
+    func manifestCarriesBookIdentity() async throws {
+        let stub = StackNestStubServer(pageCount: 2)
+        let session = StackNestBookSession(reference: try stub.reference(), configuration: stub.configuration())
+        #expect(try await session.manifest().bookIdentity == nil)
+        stub.setBookIdentity("sn1:fixture")
+        #expect(try await session.manifest(refresh: true).bookIdentity == "sn1:fixture")
+    }
+
     @Test("manifest は読んだものを使い回し、refresh: true で読み直す")
     func manifestIsReusedUntilRefreshed() async throws {
         let stub = StackNestStubServer(pageCount: 3)

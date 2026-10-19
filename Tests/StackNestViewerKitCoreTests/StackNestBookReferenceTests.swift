@@ -298,6 +298,27 @@ struct StackNestBookManifestTests {
         #expect(manifest == StackNestBookManifest(pageCount: 3, direction: nil, format: nil, etag: nil))
     }
 
+    @Test("bookIdentity を読む。無ければ nil")
+    func parsesBookIdentity() throws {
+        let data = Data(#"{"pageCount":2,"etag":"e","bookIdentity":"sn1:Abc-_.~09"}"#.utf8)
+        #expect(try StackNestBookManifest.parse(data).bookIdentity == "sn1:Abc-_.~09")
+        #expect(try StackNestBookManifest.parse(Data(#"{"pageCount":2}"#.utf8)).bookIdentity == nil)
+    }
+
+    @Test("形の外れた bookIdentity は manifest を断らずに nil にする（文字列でない・空・使えない文字・長すぎる）")
+    func ignoresMalformedBookIdentity() throws {
+        let long = String(repeating: "a", count: StackNestBookManifest.maxBookIdentityLength + 1)
+        let exact = String(repeating: "a", count: StackNestBookManifest.maxBookIdentityLength)
+        for value in [#"1"#, #"true"#, #"null"#, #"{}"#, #""""#, #""a b""#, #""a/b""#, #""a\nb""#, #""日本""#,
+                      #""a%2Fb""#, "\"\(long)\""] {
+            let manifest = try StackNestBookManifest.parse(Data("{\"pageCount\":2,\"bookIdentity\":\(value)}".utf8))
+            #expect(manifest.bookIdentity == nil, "\(value)")
+            #expect(manifest.pageCount == 2)
+        }
+        #expect(try StackNestBookManifest.parse(Data("{\"pageCount\":2,\"bookIdentity\":\"\(exact)\"}".utf8))
+                    .bookIdentity == exact)
+    }
+
     @Test("ページ数が無い・整数でない・上限を超える・壊れた JSON は .invalidResponse")
     func rejectsBrokenManifests() {
         for body in [#"{}"#, #"{"pageCount":"3"}"#, #"{"pageCount":true}"#, #"{"pageCount":1.5}"#,

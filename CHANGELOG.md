@@ -9,6 +9,13 @@ Release notes.
 
 ## [Unreleased]
 
+### 追加 / Added
+
+- `StackNestBookManifest.bookIdentity`。StackNest が manifest に付ける本の同一性（同じライブラリの同じ本なら、改題・移動・StackNest の再起動・リモートの本の中継を通しても同じ値）。ビューアが本ごとの記録の鍵に使える。付かない・形が外れるときは nil（manifest は断らない）。見立ての `StackNestStubServer.setBookIdentity(_:)` で試せる。`StackNestBookManifest` の `==` は同一性も比べる。
+  `StackNestBookManifest.bookIdentity`, the book identity StackNest adds to the manifest (the same value for the same book of the same library across renames, moves, StackNest restarts and the relay for remote books), which viewers can use as the key for what they keep per book. nil when absent or malformed (the manifest is still accepted). Try it with the stub's `StackNestStubServer.setBookIdentity(_:)`. `StackNestBookManifest`'s `==` includes the identity.
+- `StackNestReopenRequest`。ビューアが履歴や保存データから本を開き直すとき、StackNest にもう一度渡してもらう頼みの URL（`stacknest://viewer/reopen?library=…&book=…&identity=…`）を作り、読む。参照ファイルの `book`（手元の StackNest のローカルのライブラリの本だけ）と manifest の `bookIdentity` から作る。鍵は含めない。形式の文書に頼みの節を足した。
+  `StackNestReopenRequest`, which makes and reads the URL a viewer opens to have StackNest hand a book over again when reopening it from history or saved data (`stacknest://viewer/reopen?library=…&book=…&identity=…`). It is made from the reference file's `book` (local library books of the StackNest on the same Mac only) and the manifest's `bookIdentity`, and carries no token. The format document has a new section on the request.
+
 ## [0.2.0] - 2026-10-19
 
 ### 追加 / Added

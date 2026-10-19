@@ -17,6 +17,7 @@ through `StackNestViewerKit`.
 
 - ``StackNestBookReference``
 - ``StackNestBookManifest``
+- ``StackNestReopenRequest``
 - ``StackNestReadingDirection``
 - ``StackNestFormat``
 
