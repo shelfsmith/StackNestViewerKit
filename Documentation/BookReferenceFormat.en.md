@@ -105,6 +105,15 @@ Send `Authorization: Bearer <token>` and the [identification header](#identifica
 - **404** means the book is gone (removed from the library, or the server closed the library). For `pages/{n}`, a page number past the end is also **404**. A **404** on `cover` can also mean the book has no cover image.
 - `pages/{n}` returns **500** when a page can't be rendered, and `progress` returns **400** for a negative page.
 
+### Book identity (`bookIdentity`)
+
+`manifest` may carry `bookIdentity` (a string). Viewers can use it as the key for what they keep per book (bookmarks, per-page layout and so on).
+
+- For the same book of the same library it stays the same across renames, moving the file and relinking it in StackNest, StackNest restarts (even when the port changes) and the relay for remote books. A book removed and imported again gets a new value (StackNest also treats it as a different book).
+- Compare the value for equality only; don't read meaning into it (how StackNest makes it may change). It uses ASCII letters, digits and `-._~:` only, 1 to 128 characters. Readers treat a value of any other shape as absent (StackNestViewerKit gives `nil`).
+- Older StackNest versions, or an older remote server, don't send it. Then treat the book as one you can't recognise again (the reference file's `book` can change on every handoff, so it can't serve as a key).
+- Whether the book's contents changed (pages replaced and so on) shows in `etag`, which changes when the file is updated or relinked; it can't tell you whether it is the same book.
+
 ### Relayed pages
 
 For a remote book (a `book` under `/api/v1/relay/`), `pages/{n}` without `maxw` (or with `maxw=1600`) returns the same image StackNest's built-in viewer gets. StackNest keeps relayed pages in its local cache, shares them with the built-in viewer, and after the hand-off prefetches the pages around the one being read (or every page, depending on StackNest's settings) in the background:
@@ -174,3 +183,4 @@ Changes to this document that don't change the format version.
 |---|---|
 | 2026-10-10 | Moved to the StackNestViewerKit repository. Added `kit=` to the identification header, relayed pages, the characters of `token`, the accepted forms of `expiresAt` and StackNestViewerKit's loopback default |
 | 2026-10-18 | Added that StackNestViewerKit checks the shape of the `book` path by default (`allowsAnyBookPath`), and the security reason for it |
+| 2026-10-19 | Added `bookIdentity` (the book's identity) to `manifest` |

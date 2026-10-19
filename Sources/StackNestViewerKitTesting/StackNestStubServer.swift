@@ -65,6 +65,7 @@ public final class StackNestStubServer: @unchecked Sendable {
     private let lock = NSLock()
     private var pageCount: Int
     private var direction: String
+    private var bookIdentity: String?
     private var expectedToken = "fixture-token"
     private var responses: [Route: Response] = [:]
     private var gates: [Route: StubGate] = [:]
@@ -132,6 +133,11 @@ public final class StackNestStubServer: @unchecked Sendable {
     /// manifest が答えるページ数を変える。 / Changes the page count the manifest reports.
     public func setPageCount(_ count: Int) { lock.withLock { pageCount = count } }
 
+    /// manifest が答える本の同一性（`bookIdentity`）を変える。nil なら項目を付けない（既定）。
+    ///
+    /// Changes the `bookIdentity` the manifest reports; nil (the default) leaves the key out.
+    public func setBookIdentity(_ identity: String?) { lock.withLock { bookIdentity = identity } }
+
     /// 以後の `route` への応答を、返した門が開くまで止める。開け忘れても 60 秒で自動で流れる。同じ道に
     /// 続けて呼ぶと門は置き換わり、古い門で止まった応答は、その門が開くか 60 秒たつまで止まったままになる。
     ///
@@ -181,8 +187,9 @@ public final class StackNestStubServer: @unchecked Sendable {
     private func defaultResponse(_ route: Route) -> Response {
         switch route {
         case .manifest:
-            let body: [String: Any] = ["pageCount": pageCount, "direction": direction, "format": "archive",
+            var body: [String: Any] = ["pageCount": pageCount, "direction": direction, "format": "archive",
                                        "etag": "stub"]
+            if let bookIdentity { body["bookIdentity"] = bookIdentity }
             return .status(200, headers: ["Content-Type": "application/json"],
                            body: try! JSONSerialization.data(withJSONObject: body))
         case .page(let index) where index < pageCount:

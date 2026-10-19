@@ -73,6 +73,19 @@ struct PublicAPITests {
         #expect(stub.requests.map(\.route) == [.manifest, .page(0)])
     }
 
+    @Test("本の同一性を公開の面だけで読める(見立て・manifest・形の検査)")
+    func bookIdentityThroughThePublicSurface() async throws {
+        let stub = StackNestStubServer(pageCount: 1)
+        stub.setBookIdentity("sn1-publicAPIidentity")
+        let session = StackNestBookSession(reference: try stub.reference(), configuration: stub.configuration())
+        #expect(try await session.manifest().bookIdentity == "sn1-publicAPIidentity")
+        #expect(StackNestBookManifest.isAcceptableBookIdentity("sn1-publicAPIidentity"))
+        #expect(!StackNestBookManifest.isAcceptableBookIdentity("has space"))
+        let made = StackNestBookManifest(pageCount: 1, direction: nil, format: nil, etag: nil, bookIdentity: "sn1-x")
+        #expect(made.bookIdentity == "sn1-x")
+        session.close()
+    }
+
     @Test("ビューアの試験に置く自己点検（Info.plist の宣言）")
     func selfCheckOfTheDeclaration() {
         let info: [String: Any] = [StackNestViewerSupport.infoPlistKey: [StackNestViewerSupport.versionsKey: [1]]]
