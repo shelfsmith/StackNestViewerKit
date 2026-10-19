@@ -28,6 +28,22 @@ struct StackNestPrefetchTests {
                 == [.page(0), .page(1), .page(2), .page(3)].sorted { "\($0)" < "\($1)" })
     }
 
+    @Test("キャッシュの枚数いっぱいの先読みを続けても、次に読むページは追い出されない（ページを送るたびに取り直さない）")
+    func prefetchKeepsTheNextPageCached() async throws {
+        let stub = StackNestStubServer(pageCount: 12)
+        let session = try makeSession(stub) { $0.pageCacheCount = 3 }
+        // 0 を表示して 1〜3 を先読みし、1 へ進んで 2〜4 を先読みし、2 を開く。
+        _ = try await session.page(0)
+        session.prefetch([1, 2, 3])
+        #expect(await waitUntil { stub.requestCount(.page(3)) == 1 && session.cachedKeysForTesting.contains(pageKey(3)) })
+        _ = try await session.page(1)
+        session.prefetch([2, 3, 4])
+        #expect(await waitUntil { stub.requestCount(.page(4)) == 1 && session.cachedKeysForTesting.contains(pageKey(4)) })
+        #expect(session.cachedKeysForTesting == [pageKey(3), pageKey(2), pageKey(4)], "表示し終えた 1 が先に出る")
+        _ = try await session.page(2)
+        #expect(stub.requestCount(.page(2)) == 1, "先読みした 2 を取り直さない")
+    }
+
     @Test("表示の要求は先読みの列に並ばない")
     func displayDoesNotQueueBehindPrefetch() async throws {
         let stub = StackNestStubServer(pageCount: 8)

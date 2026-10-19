@@ -246,6 +246,11 @@ public final class StackNestBookSession: @unchecked Sendable {
             for (key, ticket) in state.prefetchTickets where !wantedSet.contains(key) {
                 _ = removeWaiterLocked(ticket, effects: &effects)
             }
+            // もう持っている希望のページを、遠い順に新しい側へ回す（近いページほど新しくなる）。回さないと、希望の枚数と
+            // 表示中のページでキャッシュの枚数を超えたとき、新しく届いた先読みが、次に読む（いちばん古い）希望のページを
+            // 追い出し、そのページを開くと取り直しになった（ページを送るたびに同じことが続く）。回した後に追い出されるのは、
+            // 希望の外（表示し終えたページ）→ 遠い希望の順。
+            for key in wanted.reversed() { state.cache.touch(key) }
             state.prefetchQueue = wanted.filter {
                 state.prefetchTickets[$0] == nil && state.flights[$0] == nil && !state.cache.contains($0)
             }

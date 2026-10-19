@@ -24,6 +24,12 @@ struct PageCache {
 
     func contains(_ key: RequestKey) -> Bool { entries.contains { $0.key == key } }
 
+    /// 持っていれば新しい側へ回す（返さない）。持っていなければ何もしない。
+    mutating func touch(_ key: RequestKey) {
+        guard let position = entries.firstIndex(where: { $0.key == key }) else { return }
+        entries.append(entries.remove(at: position))
+    }
+
     mutating func store(_ response: FetchedResponse, for key: RequestKey) {
         if let position = entries.firstIndex(where: { $0.key == key }) {
             totalBytes -= entries.remove(at: position).response.data.count

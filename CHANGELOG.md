@@ -9,6 +9,11 @@ Release notes.
 
 ## [Unreleased]
 
+### 修正 / Fixed
+
+- `prefetch(_:maxWidth:)` にキャッシュの枚数いっぱいの希望を渡し続けると、新しく届いた先読みが次に読むページを追い出し、そのページを開くたびに取り直していた（キャッシュにある希望のページを、古いまま残していた）。指示のたびに、持っている希望のページを近い順に新しくし、先に追い出されるのは表示し終えたページ、次に遠い希望のページになるようにした。
+  Passing `prefetch(_:maxWidth:)` as many pages as the cache holds made each newly prefetched page push out the page to be read next, so opening it fetched it again on every page turn (wanted pages already in the cache were left as the oldest entries). Each instruction now refreshes the wanted pages already cached, nearest last, so pages already shown are evicted first, then the farthest wanted pages.
+
 ## [0.2.0] - 2026-10-19
 
 ### 追加 / Added
