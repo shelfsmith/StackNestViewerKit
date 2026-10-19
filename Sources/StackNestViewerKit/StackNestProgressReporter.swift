@@ -45,6 +45,9 @@ public final class StackNestProgressReporter {
     private var firstPendingAt: ContinuousClock.Instant?
     private var closeDeferred = false
     private var retriedAfterClose = false
+    /// 飛んでいる送信の最中に `flush()` を受けた（その送信が失敗しても、止まっていたページのまとめ待ちを張り直さない。
+    /// `flush` の約束は「送信中なら、それが成功した後に送る」）。送信が終わるたびに下ろす。
+    private var flushedDuringSend = false
     private var isClosed = false
     /// 送り残しを終了時の送り切り（`StackNestProgressRegistry.flushAllBlocking(timeout:)`）へ渡した後。以後は送らない。
     private var isHandedOff = false
@@ -109,6 +112,14 @@ public final class StackNestProgressReporter {
         guard !isStopped, !isClosed, page >= 0 else { return }
         if page == lastSentPage, pendingPage == nil { return }
         pendingPage = page
+        // 送信の最中に受けた `flush()` の約束(成功した後にだけ送る)は、そのとき止まっていたページの話。後から止まったページは、
+        // 自分のまとめ待ちの約束を持つ(送信が失敗しても張り直す)。
+        flushedDuringSend = false
+        scheduleDebounce()
+    }
+
+    /// まとめ待ちを（やり直して）張る。待つ長さは、止まっているページが最初に止まった時刻から数えて `maxWait` を越えない。
+    private func scheduleDebounce() {
         let now = ContinuousClock.now
         let start = firstPendingAt ?? now
         firstPendingAt = start
@@ -126,6 +137,7 @@ public final class StackNestProgressReporter {
     /// Sends now instead of waiting (after the in-flight send succeeds, if there is one).
     public func flush() {
         guard !isStopped else { return }
+        if inFlight != nil { flushedDuringSend = true }
         debounceTask?.cancel()
         debounceTask = nil
         sendPending()
@@ -201,11 +213,23 @@ public final class StackNestProgressReporter {
             }
             inFlight = nil
             inFlightSend = nil
+            let flushedDuringThisSend = flushedDuringSend
+            flushedDuringSend = false
             if succeeded {
                 sendPending()
             } else if closeDeferred, !retriedAfterClose, let newer = pendingPage, newer != page {
                 retriedAfterClose = true
                 sendPending()
+            } else if !isStopped, !isClosed, !flushedDuringThisSend, debounceTask == nil, let newer = pendingPage,
+                      newer != page
+            {
+                // 送信の最中に新しいページが止まり、そのまとめ待ちが送信の終わりより先に発火して空振りしていた
+                // （`sendPending` は飛んでいる送信があると何もしない）。張り直さないと、新しいページは次の合図まで
+                // 送られない（時間切れの失敗はまとめ待ちより長いので、この順がふつう）。最初に止まった時刻から
+                // 数えるので、`maxWait` を過ぎていればすぐ送る。失敗したページそのものしか残っていないときは張らない
+                // （すぐには送り直さない ―― `handle` のコメント）。送信の最中に `flush()` を受けたときも張らない
+                // （`flush` は成功した後にだけ送る約束。次の `note`・`flush`・`close` で送る）。
+                scheduleDebounce()
             }
         }
     }

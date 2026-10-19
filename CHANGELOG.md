@@ -9,6 +9,11 @@ Release notes.
 
 ## [Unreleased]
 
+### 修正 / Fixed
+
+- 書き戻しの役で、送信の最中に止まった新しいページが、送信の失敗の後に送られないまま残ることがあった（まとめ待ちが送信の終わりより先に発火して空振りし、次の `note`・`flush`・`close` まで送られなかった。時間切れの失敗はまとめ待ちより長いので、この順がふつう）。失敗の後にまとめ待ちを張り直す（最初に止まった時刻から数えるので、`maxWait` を過ぎていればすぐ送る）。失敗したページそのものしか残っていないとき、送信の最中に `flush()` を受けたときに止まっていたページ（`flush` は成功した後にだけ送る約束）は、これまでどおりすぐには送らない（その flush の後に止まったページは、自分のまとめ待ちで送る）。
+  A progress reporter could leave a newer page unsent after a failed send: the batching wait fired while the send was still in flight and did nothing, so the page waited for the next `note`, `flush` or `close` (a timeout outlasts the batching wait, so this was the usual order). The batching wait is now re-armed after the failure (counted from when the page first waited, so it goes out at once once `maxWait` has passed). When only the failed page itself remains, or the page had already waited when `flush()` was called during the send (`flush` sends only after a success), nothing is sent right away, as before; a page noted after that flush gets its own batching wait.
+
 ## [0.2.0] - 2026-10-19
 
 ### 追加 / Added
